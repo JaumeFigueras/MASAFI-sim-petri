@@ -226,3 +226,4 @@ PROMPTS.md
 
 # Sphinx generated API stubs
 docs/source/api/
+test/coverage_reports/

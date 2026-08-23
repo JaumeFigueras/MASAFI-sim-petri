@@ -21,9 +21,12 @@ simulation
 
 from importlib.metadata import PackageNotFoundError, version
 
+from masafi_sim_petri.petri_net.place import Place
+from masafi_sim_petri.petri_net.transition import Transition
+
 try:
     __version__: str = version("masafi-sim-petri")
 except PackageNotFoundError:  # pragma: no cover - only when not installed
     __version__ = "0.0.0"
 
-__all__: list[str] = ["__version__"]
+__all__: list[str] = ['Place', 'Transition', '__version__']

@@ -3,4 +3,7 @@
 Places, transitions, arcs and tokens, plus the net that holds them.
 """
 
-__all__: list[str] = []
+from masafi_sim_petri.petri_net.place import Place
+from masafi_sim_petri.petri_net.transition import Transition
+
+__all__: list[str] = ['Place', 'Transition']

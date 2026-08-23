@@ -53,3 +53,13 @@ def test_no_generic_top_level_packages_are_installed() -> None:
     for name in ["petri_net", "analysis", "simulation"]:
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module(name)
+
+
+def test_public_api_is_re_exported_from_the_top_level() -> None:
+    """The names in ``__all__`` are importable from the top-level package.
+
+    Consumer projects import from :mod:`masafi_sim_petri` rather than from the
+    internal module paths, so every advertised name must resolve there.
+    """
+    for name in masafi_sim_petri.__all__:
+        assert hasattr(masafi_sim_petri, name), name

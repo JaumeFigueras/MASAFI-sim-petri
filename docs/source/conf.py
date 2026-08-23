@@ -26,6 +26,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'sphinx.ext.apidoc',
+    'sphinx.ext.doctest',
     'sphinx.ext.viewcode',
 ]
 
@@ -50,6 +51,15 @@ apidoc_modules = [
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html
 
 autodoc_member_order = 'bysource'
+# The package ``__init__`` files re-export the public API. Without
+# 'ignore-module-all' autodoc follows their ``__all__`` and documents e.g.
+# ``Place`` under both ``masafi_sim_petri`` and
+# ``masafi_sim_petri.petri_net.place``, which Sphinx reports as a duplicate
+# object description. Each class is documented once, in the module that
+# defines it.
+autodoc_default_options = {
+    'ignore-module-all': True,
+}
 # Types stay in the rendered signature. NumPy-style docstrings already spell
 # the types out in their ``Parameters`` section, so moving annotations into the
 # description would render every parameter type twice.

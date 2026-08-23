@@ -28,6 +28,7 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
+    "build>=1.2",
 ]
 docs = [
     "sphinx>=9.1.0",
@@ -40,4 +41,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
-addopts = "--strict-markers"
+# `importlib` import mode lets the test tree mirror the package tree without
+# `__init__.py` files: test/petri_net/test_place.py and a future
+# test/analysis/test_place.py can coexist without a module name clash.
+addopts = "--strict-markers --import-mode=importlib"
