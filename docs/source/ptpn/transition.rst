@@ -37,8 +37,8 @@ This is why you will not find ``transition.is_enabled()`` or
 questions on its own; it does not know which arcs reach it. They are operations
 of the net::
 
-    net.is_enabled(take)
-    net.fire(take)
+    net.is_enabled(transition)
+    net.fire(transition)
 
 The alternative design — giving each transition a list of its input and output
 arcs — would let it answer for itself, at the cost of turning the model into a
@@ -65,11 +65,18 @@ from this class, so the name and its validation are written once.
 Naming
 ------
 
-The name is fixed at construction and cannot be reassigned. The net indexes its
-transitions by name, so a transition that could rename itself would leave that
-index pointing at the wrong entry. Renaming, when the editor needs it, will go
-through the net, which can update both the transition and its own index
-together.
+The name cannot be assigned directly. The net indexes its transitions by name,
+so a transition that renamed itself would leave that index pointing at the old
+entry — ``net.transition('old_name')`` would still resolve, and the new name
+would not.
+
+Renaming therefore goes through the net, which changes both at once:
+
+.. code-block:: python
+
+   net.rename_transition(transition, 'new_name')
+
+See :ref:`renaming` for what that guarantees.
 
 Blank names are rejected for the same reason a blank place name is: the name is
 what identifies the transition inside a net.

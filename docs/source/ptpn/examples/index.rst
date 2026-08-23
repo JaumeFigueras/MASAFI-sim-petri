@@ -9,3 +9,4 @@ output shown is the output the code actually produces.
    :maxdepth: 2
 
    place
+   petri_net

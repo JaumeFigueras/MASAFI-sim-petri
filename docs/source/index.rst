@@ -30,6 +30,7 @@ Installation
    :caption: User guide
 
    ptpn/index
+   io/index
 
 .. toctree::
    :maxdepth: 2

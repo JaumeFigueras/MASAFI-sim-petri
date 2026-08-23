@@ -10,6 +10,8 @@ to read first.
 
    place
    transition
+   arc
+   petri_net
    examples/index
 
 What is a Petri net?
@@ -188,8 +190,10 @@ The model is split into one class per concept, each in its own module under
    reaching it; firing moves the tokens. Carries no state of its own in a P/T
    net. **Implemented** — see :doc:`transition`.
 
-``Arc``
-   A weighted, directed connection between a place and a transition. *Planned.*
+:class:`~masafi_sim_petri.petri_net.arc.Arc`
+   A weighted, directed connection between a place and a transition. Its
+   direction decides whether firing consumes tokens or produces them.
+   **Implemented** — see :doc:`arc`.
 
 ``ArcInhibition``
    An inhibitor arc, which enables its transition only when the place is
@@ -202,11 +206,12 @@ The model is split into one class per concept, each in its own module under
    so it becomes meaningful with coloured nets, where a token carries a value.
    *Planned.*
 
-``PetriNet``
+:class:`~masafi_sim_petri.petri_net.petri_net.PetriNet`
    The net: it owns the places, the transitions and, importantly, the
    connectivity. Places and transitions hold no references to their arcs, so
    the model is an acyclic object graph and each class can be tested on its
-   own. Enabling and firing are therefore operations on the net. *Planned.*
+   own. Enabling and firing are therefore operations on the net.
+   **Implemented** — see :doc:`petri_net`.
 
 Keeping connectivity in one place also keeps the model free of any simulation
 machinery: the same net object can be handed to the reachability analysis in

@@ -43,21 +43,50 @@ class Place:
     """
 
     def __init__(self, name: str, initial_marking: int = 0) -> None:
-        if not name or not name.strip():
-            raise ValueError('The name of a place cannot be empty')
+        self._name: str = ''
+        self._set_name(name)
         if initial_marking < 0:
             raise ValueError(
                 'The initial marking of a place cannot be negative, got '
                 f'{initial_marking}'
             )
-        self._name: str = name
         self._initial_marking: int = initial_marking
         self._marking: int = initial_marking
 
     @property
     def name(self) -> str:
-        """str: Name of the place, fixed at construction time."""
+        """str: Name of the place.
+
+        The name identifies the place inside a net, so it cannot be assigned
+        directly: the net indexes its places by name and would be left holding
+        a stale entry. Use
+        :meth:`~masafi_sim_petri.petri_net.petri_net.PetriNet.rename_place`,
+        which renames the place and updates the index together.
+        """
         return self._name
+
+    def _set_name(self, name: str) -> None:
+        """Set the name of the place, validating it.
+
+        Internal to the package. A place that belongs to a net must be renamed
+        through
+        :meth:`~masafi_sim_petri.petri_net.petri_net.PetriNet.rename_place`,
+        which checks the new name against the other places of the net and
+        keeps its index in step.
+
+        Parameters
+        ----------
+        name : str
+            New name of the place.
+
+        Raises
+        ------
+        ValueError
+            If `name` is empty or blank.
+        """
+        if not name or not name.strip():
+            raise ValueError('The name of a place cannot be empty')
+        self._name = name
 
     @property
     def initial_marking(self) -> int:

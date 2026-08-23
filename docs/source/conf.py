@@ -27,6 +27,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.apidoc',
     'sphinx.ext.doctest',
+    'sphinx.ext.intersphinx',
     'sphinx.ext.viewcode',
 ]
 
@@ -46,6 +47,18 @@ apidoc_modules = [
         'automodule_options': {'members', 'undoc-members', 'show-inheritance'},
     },
 ]
+
+# -- intersphinx -------------------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/extensions/intersphinx.html
+#
+# Lets roles such as :exc:`ValueError` resolve to the standard library
+# documentation. The inventory is fetched over the network and cached in the
+# doctree directory; an offline build degrades to plain text with a warning
+# rather than failing.
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+}
 
 # -- autodoc -----------------------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html

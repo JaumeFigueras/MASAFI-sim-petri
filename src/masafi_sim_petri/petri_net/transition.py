@@ -45,14 +45,43 @@ class Transition:
     """
 
     def __init__(self, name: str) -> None:
-        if not name or not name.strip():
-            raise ValueError('The name of a transition cannot be empty')
-        self._name: str = name
+        self._name: str = ''
+        self._set_name(name)
 
     @property
     def name(self) -> str:
-        """str: Name of the transition, fixed at construction time."""
+        """str: Name of the transition.
+
+        The name identifies the transition inside a net, so it cannot be
+        assigned directly: the net indexes its transitions by name and would be
+        left holding a stale entry. Use
+        :meth:`~masafi_sim_petri.petri_net.petri_net.PetriNet.rename_transition`,
+        which renames the transition and updates the index together.
+        """
         return self._name
+
+    def _set_name(self, name: str) -> None:
+        """Set the name of the transition, validating it.
+
+        Internal to the package. A transition that belongs to a net must be
+        renamed through
+        :meth:`~masafi_sim_petri.petri_net.petri_net.PetriNet.rename_transition`,
+        which checks the new name against the other transitions of the net and
+        keeps its index in step.
+
+        Parameters
+        ----------
+        name : str
+            New name of the transition.
+
+        Raises
+        ------
+        ValueError
+            If `name` is empty or blank.
+        """
+        if not name or not name.strip():
+            raise ValueError('The name of a transition cannot be empty')
+        self._name = name
 
     def __str__(self) -> str:
         """Return the name of the transition.
