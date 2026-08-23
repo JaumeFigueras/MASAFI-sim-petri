@@ -254,15 +254,12 @@ def write_pnml(
     Path(path).write_text(to_pnml(net, net_id=net_id), encoding='utf-8')
 
 
-def from_pnml(document: str) -> PetriNet:
-    """Read a PNML document into a net.
+def pnml_to_element(document: str) -> ElementTree.Element:
+    """Parse a PNML document into an element tree.
 
-    Places, transitions and arcs are added in the order they appear in the
-    document, so a net written by :func:`to_pnml` and read back has the same
-    place order and therefore the same marking vector.
-
-    A node is named by its ``name`` label when it has one, and by its ``id``
-    otherwise. The ``id`` is what arcs refer to, whichever is used as the name.
+    Reading a document at this level lets a project take the model from
+    :func:`from_element` and read whatever else it needs -- ``graphics``,
+    ``toolspecific`` -- from the same tree, which the model does not carry.
 
     Parameters
     ----------
@@ -271,55 +268,69 @@ def from_pnml(document: str) -> PetriNet:
 
     Returns
     -------
-    PetriNet
-        The net described by the document, at its initial marking.
+    xml.etree.ElementTree.Element
+        The ``pnml`` root element.
 
     Raises
     ------
     PnmlError
-        If the document is not well-formed XML, is not PNML, holds anything
-        other than exactly one net, declares a net type other than
-        Place/Transition, or describes a net this library cannot build.
+        If the document is not well-formed XML, or its root is not ``pnml``.
 
     See Also
     --------
-    read_pnml : Read the document from a file.
-    to_pnml : Write a net back out.
-
-    Examples
-    --------
-    >>> from masafi_sim_petri import PetriNet, Place, Transition
-    >>> from masafi_sim_petri.io import from_pnml, to_pnml
-    >>> net = PetriNet()
-    >>> _ = net.add_place(Place('waiting', initial_marking=2))
-    >>> _ = net.add_transition(Transition('serve'))
-    >>> restored = from_pnml(to_pnml(net))
-    >>> [place.name for place in restored.places]
-    ['waiting']
-    >>> restored.marking
-    (2,)
+    from_element : Build a net from the tree.
     """
     try:
         root = ElementTree.fromstring(document)
     except ElementTree.ParseError as error:
-        raise PnmlError(f'The document is not well-formed XML: {error}') from error
+        raise PnmlError(
+            f'The document is not well-formed XML: {error}'
+        ) from error
 
     if _local_name(root) != 'pnml':
         raise PnmlError(
             "The root element of a PNML document must be 'pnml', got "
             f'{_local_name(root)!r}'
         )
+    return root
 
-    nets = [child for child in root if _local_name(child) == 'net']
-    if not nets:
-        raise PnmlError('The document holds no net')
-    if len(nets) > 1:
-        raise PnmlError(
-            f'The document holds {len(nets)} nets, and only a document with '
-            'a single net can be read into one PetriNet'
-        )
 
-    net_element = nets[0]
+def from_element(root: ElementTree.Element) -> PetriNet:
+    """Build a net from a PNML element tree.
+
+    Places, transitions and arcs are added in the order they appear in the
+    tree, so a net written by :func:`to_element` and read back has the same
+    place order and therefore the same marking vector.
+
+    A node is named by its ``name`` label when it has one, and by its ``id``
+    otherwise. The ``id`` is what arcs refer to, whichever is used as the name.
+
+    Anything the model does not hold -- ``graphics``, ``toolspecific`` -- is
+    ignored here rather than lost: it is still in the tree, for the caller to
+    read.
+
+    Parameters
+    ----------
+    root : xml.etree.ElementTree.Element
+        The ``pnml`` root element.
+
+    Returns
+    -------
+    PetriNet
+        The net described by the tree, at its initial marking.
+
+    Raises
+    ------
+    PnmlError
+        If the tree holds anything other than exactly one net, declares a net
+        type other than Place/Transition, or describes a net this library
+        cannot build.
+
+    See Also
+    --------
+    pnml_to_element : Parse a document into a tree.
+    """
+    net_element = _net_element(root)
     declared_type = net_element.get('type')
     if declared_type is not None and declared_type != PT_NET_TYPE:
         raise PnmlError(
@@ -361,9 +372,321 @@ def from_pnml(document: str) -> PetriNet:
         try:
             net.add_arc(Arc(source, target, weight=weight))
         except ValueError as error:
-            raise PnmlError(f'Arc {identifier!r} cannot be added: {error}') from error
+            raise PnmlError(
+                f'Arc {identifier!r} cannot be added: {error}'
+            ) from error
 
     return net
+
+
+def from_pnml(document: str) -> PetriNet:
+    """Read a PNML document into a net.
+
+    A shorthand for :func:`pnml_to_element` followed by :func:`from_element`,
+    for when nothing but the net is wanted from the document.
+
+    Parameters
+    ----------
+    document : str
+        A PNML document.
+
+    Returns
+    -------
+    PetriNet
+        The net described by the document, at its initial marking.
+
+    Raises
+    ------
+    PnmlError
+        If the document is not well-formed XML, is not PNML, holds anything
+        other than exactly one net, declares a net type other than
+        Place/Transition, or describes a net this library cannot build.
+
+    See Also
+    --------
+    pnml_to_element : Parse the document into a tree, to read graphics too.
+    read_pnml : Read the document from a file.
+    to_pnml : Write a net back out.
+
+    Examples
+    --------
+    >>> from masafi_sim_petri import PetriNet, Place, Transition
+    >>> from masafi_sim_petri.io import from_pnml, to_pnml
+    >>> net = PetriNet()
+    >>> _ = net.add_place(Place('waiting', initial_marking=2))
+    >>> _ = net.add_transition(Transition('serve'))
+    >>> restored = from_pnml(to_pnml(net))
+    >>> [place.name for place in restored.places]
+    ['waiting']
+    >>> restored.marking
+    (2,)
+    """
+    return from_element(pnml_to_element(document))
+
+
+def qname(local_name: str) -> str:
+    """Return an element name qualified with the PNML namespace.
+
+    PNML elements are namespaced, and :mod:`xml.etree.ElementTree` spells a
+    qualified name ``{namespace}name``. Use this rather than writing the
+    namespace out, so a change of PNML version is a change in one place.
+
+    Parameters
+    ----------
+    local_name : str
+        Local name of the element, such as ``'graphics'``.
+
+    Returns
+    -------
+    str
+        The qualified name.
+
+    Examples
+    --------
+    >>> from masafi_sim_petri.io import qname
+    >>> qname('graphics')
+    '{http://www.pnml.org/version-2009/grammar/pnml}graphics'
+    """
+    return _tag(local_name)
+
+
+def element_for(
+    root: ElementTree.Element, node: Place | Transition | Arc | str
+) -> ElementTree.Element:
+    """Return the element of a tree that stands for a node of a net.
+
+    This is how a caller finds the place to hang a ``graphics`` or
+    ``toolspecific`` element on. An arc is matched on its two endpoints rather
+    than on an identifier, because the model does not name arcs and a net
+    never holds two arcs joining the same pair the same way round.
+
+    Parameters
+    ----------
+    root : xml.etree.ElementTree.Element
+        The ``pnml`` root element, as built by :func:`to_element`.
+    node : Place, Transition, Arc or str
+        Node to look for, or the ``id`` of an element to look for directly.
+
+    Returns
+    -------
+    xml.etree.ElementTree.Element
+        The matching element.
+
+    Raises
+    ------
+    PnmlError
+        If the tree holds no element for that node.
+
+    Notes
+    -----
+    A place or transition is matched on the ``id`` written by
+    :func:`to_element`, which is the name of the node. In a document read from
+    elsewhere the ``id`` and the name may differ, and the ``id`` should be
+    passed as a string.
+    """
+    if isinstance(node, Arc):
+        source, target = _arc_endpoints(node)
+        for element in _descendants(root, 'arc'):
+            if (
+                element.get('source') == source.name
+                and element.get('target') == target.name
+            ):
+                return element
+        raise PnmlError(
+            f'The tree holds no arc from {source.name!r} to {target.name!r}'
+        )
+
+    identifier = node if isinstance(node, str) else node.name
+    for name in ['place', 'transition']:
+        for element in _descendants(root, name):
+            if element.get('id') == identifier:
+                return element
+    raise PnmlError(f'The tree holds no element with id {identifier!r}')
+
+
+def nodes_by_element(
+    root: ElementTree.Element, net: PetriNet
+) -> dict[ElementTree.Element, Place | Transition | Arc]:
+    """Return which element of a tree stands for which node of a net.
+
+    This is the counterpart of :func:`element_for`, for going the other way.
+    After :func:`from_element` has built a net, a caller reading the graphics
+    or the tool data out of the same tree needs to know which node each
+    element produced -- and the ``id`` cannot answer that on its own, because
+    a node is named after its ``name`` label when it has one.
+
+    The correspondence is positional and holds in both directions:
+    :func:`from_element` adds nodes in document order, and :func:`to_element`
+    writes them in the order the net holds them. So this works whether the
+    tree was read or written.
+
+    Parameters
+    ----------
+    root : xml.etree.ElementTree.Element
+        The ``pnml`` root element.
+    net : PetriNet
+        The net that tree describes, as returned by :func:`from_element` or as
+        passed to :func:`to_element`.
+
+    Returns
+    -------
+    dict
+        Mapping from ``place``, ``transition`` and ``arc`` elements to the
+        nodes of the net.
+
+    Raises
+    ------
+    PnmlError
+        If the tree and the net do not hold the same number of places,
+        transitions or arcs, which means they do not describe each other.
+
+    See Also
+    --------
+    element_for : Go from a node to its element.
+
+    Notes
+    -----
+    Inverting the mapping gives a node-to-element lookup that works for a tree
+    read from elsewhere, where an ``id`` need not equal a name::
+
+        elements = {node: element
+                    for element, node in nodes_by_element(root, net).items()}
+
+    Examples
+    --------
+    >>> from masafi_sim_petri import PetriNet, Place
+    >>> from masafi_sim_petri.io import (
+    ...     from_element, nodes_by_element, pnml_to_element, to_pnml,
+    ... )
+    >>> net = PetriNet()
+    >>> _ = net.add_place(Place('buffer', initial_marking=1))
+    >>> root = pnml_to_element(to_pnml(net))
+    >>> restored = from_element(root)
+    >>> {element.get('id'): node.name
+    ...  for element, node in nodes_by_element(root, restored).items()}
+    {'buffer': 'buffer'}
+    """
+    net_element = _net_element(root)
+    mapping: dict[ElementTree.Element, Place | Transition | Arc] = {}
+    for name, nodes in [
+        ('place', net.places),
+        ('transition', net.transitions),
+        ('arc', net.arcs),
+    ]:
+        elements = _descendants(net_element, name)
+        if len(elements) != len(nodes):
+            raise PnmlError(
+                f'The tree holds {len(elements)} {name} elements but the net '
+                f'holds {len(nodes)}, so they do not describe each other'
+            )
+        mapping.update(zip(elements, nodes, strict=True))
+    return mapping
+
+
+def set_graphics(
+    element: ElementTree.Element,
+    position: tuple[float, float] | None = None,
+    dimension: tuple[float, float] | None = None,
+    fill: dict[str, str] | None = None,
+    line: dict[str, str] | None = None,
+) -> ElementTree.Element:
+    """Attach a ``graphics`` element to a node, transition or arc element.
+
+    PNML has a defined place for how a net looks, which is what lets a layout
+    survive a trip through a tool that does not care about it. The model holds
+    no layout data, so this writes it onto the tree instead.
+
+    Any ``graphics`` element already on `element` is replaced. Arguments left
+    as ``None`` are not written, so the standard's own defaults apply.
+
+    Parameters
+    ----------
+    element : xml.etree.ElementTree.Element
+        Element to attach the graphics to.
+    position : tuple of float, optional
+        ``(x, y)`` of the node, or of a bend point of an arc.
+    dimension : tuple of float, optional
+        ``(width, height)`` of the node.
+    fill : dict, optional
+        Attributes of the ``fill`` element. The standard defines ``color``,
+        ``gradient-color``, ``gradient-rotation`` and ``image``.
+    line : dict, optional
+        Attributes of the ``line`` element. The standard defines ``color``,
+        ``shape``, ``style`` and ``width``.
+
+    Returns
+    -------
+    xml.etree.ElementTree.Element
+        The ``graphics`` element, so that anything else can be added to it.
+
+    See Also
+    --------
+    graphics_of : Read the graphics of an element back.
+
+    Examples
+    --------
+    >>> from masafi_sim_petri import PetriNet, Place
+    >>> from masafi_sim_petri.io import element_for, set_graphics, to_element
+    >>> net = PetriNet()
+    >>> buffer = net.add_place(Place('buffer'))
+    >>> root = to_element(net)
+    >>> graphics = set_graphics(
+    ...     element_for(root, buffer),
+    ...     position=(40, 120),
+    ...     dimension=(30, 30),
+    ...     fill={'color': '#B0D0FF'},
+    ...     line={'color': '#204060', 'width': '2'},
+    ... )
+    >>> [child.tag.rpartition('}')[2] for child in graphics]
+    ['position', 'dimension', 'fill', 'line']
+    """
+    existing = graphics_of(element)
+    if existing is not None:
+        element.remove(existing)
+
+    graphics = ElementTree.SubElement(element, _tag('graphics'))
+    if position is not None:
+        ElementTree.SubElement(
+            graphics,
+            _tag('position'),
+            {'x': _number(position[0]), 'y': _number(position[1])},
+        )
+    if dimension is not None:
+        ElementTree.SubElement(
+            graphics,
+            _tag('dimension'),
+            {'x': _number(dimension[0]), 'y': _number(dimension[1])},
+        )
+    if fill is not None:
+        ElementTree.SubElement(graphics, _tag('fill'), dict(fill))
+    if line is not None:
+        ElementTree.SubElement(graphics, _tag('line'), dict(line))
+    return graphics
+
+
+def graphics_of(
+    element: ElementTree.Element,
+) -> ElementTree.Element | None:
+    """Return the ``graphics`` element of an element, if it has one.
+
+    Parameters
+    ----------
+    element : xml.etree.ElementTree.Element
+        Element to look under.
+
+    Returns
+    -------
+    xml.etree.ElementTree.Element or None
+        The ``graphics`` child, or ``None`` when there is none.
+
+    See Also
+    --------
+    set_graphics : Write the graphics of an element.
+    """
+    for child in element:
+        if _local_name(child) == 'graphics':
+            return child
+    return None
 
 
 def read_pnml(path: str | Path) -> PetriNet:
@@ -396,6 +719,72 @@ def read_pnml(path: str | Path) -> PetriNet:
 # ----------------------------------------------------------------------
 # Internals
 # ----------------------------------------------------------------------
+
+
+def _net_element(root: ElementTree.Element) -> ElementTree.Element:
+    """Return the single ``net`` element of a PNML tree.
+
+    Parameters
+    ----------
+    root : xml.etree.ElementTree.Element
+        The ``pnml`` root element.
+
+    Returns
+    -------
+    xml.etree.ElementTree.Element
+        The ``net`` element.
+
+    Raises
+    ------
+    PnmlError
+        If the tree holds no net, or more than one. One tree describes one
+        :class:`~masafi_sim_petri.petri_net.petri_net.PetriNet`.
+    """
+    nets = [child for child in root if _local_name(child) == 'net']
+    if not nets:
+        raise PnmlError('The document holds no net')
+    if len(nets) > 1:
+        raise PnmlError(
+            f'The document holds {len(nets)} nets, and only a document with '
+            'a single net can be read into one PetriNet'
+        )
+    return nets[0]
+
+
+def _arc_endpoints(arc: Arc) -> tuple[Place | Transition, Place | Transition]:
+    """Return the endpoints of an arc in the direction the tokens move.
+
+    Parameters
+    ----------
+    arc : Arc
+        Arc to read.
+
+    Returns
+    -------
+    tuple
+        The source and the target, which is the order PNML writes them in.
+    """
+    if arc.is_input:
+        return arc.place, arc.transition
+    return arc.transition, arc.place
+
+
+def _number(value: float) -> str:
+    """Return a coordinate as PNML text.
+
+    Parameters
+    ----------
+    value : float
+        Coordinate or length.
+
+    Returns
+    -------
+    str
+        The value without a trailing ``.0``, so whole numbers stay readable.
+    """
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 def _tag(name: str) -> str:

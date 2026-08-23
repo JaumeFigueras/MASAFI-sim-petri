@@ -38,6 +38,17 @@ docs = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+# src/examples holds runnable scripts, not library code. They are deliberately
+# not part of the distribution; this keeps them out even if the directory ever
+# gains an __init__.py.
+exclude = ["examples*"]
+
+[tool.coverage.report]
+# The script guard runs only when a module is invoked directly, which the
+# example tests do in a subprocess where coverage cannot see it.
+exclude_also = [
+    "if __name__ == '__main__':",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

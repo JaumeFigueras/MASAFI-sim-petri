@@ -1,6 +1,7 @@
 """Tests for the :mod:`masafi_sim_petri` package layout and metadata."""
 
 import importlib
+from importlib.metadata import distribution
 
 import pytest
 
@@ -63,3 +64,21 @@ def test_public_api_is_re_exported_from_the_top_level() -> None:
     """
     for name in masafi_sim_petri.__all__:
         assert hasattr(masafi_sim_petri, name), name
+
+
+def test_the_examples_are_not_part_of_the_distribution() -> None:
+    """``src/examples`` holds scripts, and scripts are not shipped.
+
+    The distribution declares one top-level package. The example scripts sit
+    under ``src`` so that they live with the source, but ``packages.find``
+    excludes them, so neither the wheel nor the sdist carries them.
+
+    Note that ``import examples`` does succeed in a development install: an
+    editable install puts ``src`` itself on ``sys.path``, which makes every
+    directory under it importable. That is a property of the development
+    environment, not of the distribution, which is what this checks.
+    """
+    top_level = distribution('masafi-sim-petri').read_text('top_level.txt')
+
+    assert top_level is not None
+    assert top_level.split() == ['masafi_sim_petri']

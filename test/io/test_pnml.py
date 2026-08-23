@@ -6,10 +6,20 @@ import pytest
 
 from masafi_sim_petri import Arc, PetriNet, Place, Transition
 from masafi_sim_petri.io import (
+    PNML_NAMESPACE,
     PT_NET_TYPE,
     PnmlError,
+    element_for,
+    element_to_pnml,
+    from_element,
     from_pnml,
+    graphics_of,
+    nodes_by_element,
+    pnml_to_element,
+    qname,
     read_pnml,
+    set_graphics,
+    to_element,
     to_pnml,
     write_pnml,
 )
@@ -533,3 +543,415 @@ class TestFiles:
         assert read_pnml(path).place('màquina_aturada').name == (
             'màquina_aturada'
         )
+
+
+class TestElementLevel:
+    """The tree level, which is what a graphical editor builds on."""
+
+    def test_to_element_returns_the_pnml_root(
+        self, server_net: PetriNet
+    ) -> None:
+        """The caller is handed the document root, not a fragment."""
+        root = to_element(server_net)
+
+        assert root.tag == qname('pnml')
+
+    def test_a_tree_serialises_to_the_same_document(
+        self, server_net: PetriNet
+    ) -> None:
+        """The shorthand and the two steps agree."""
+        assert element_to_pnml(to_element(server_net)) == to_pnml(server_net)
+
+    def test_a_parsed_tree_reads_to_the_same_net(
+        self, server_net: PetriNet
+    ) -> None:
+        """The shorthand and the two steps agree on the way in too."""
+        document = to_pnml(server_net)
+
+        from_the_tree = from_element(pnml_to_element(document))
+
+        assert from_the_tree.marking == from_pnml(document).marking
+
+    def test_a_net_id_is_carried_through_the_tree(
+        self, server_net: PetriNet
+    ) -> None:
+        """Options of the shorthand are options of the tree builder."""
+        root = to_element(server_net, net_id='queue')
+
+        assert root[0].get('id') == 'queue'
+
+    def test_parsing_rejects_a_bad_root(self) -> None:
+        """The tree level validates what it can, as the shorthand does."""
+        with pytest.raises(PnmlError, match="must be 'pnml'"):
+            pnml_to_element('<graphml/>')
+
+    def test_parsing_rejects_malformed_xml(self) -> None:
+        """A truncated document fails at parse time."""
+        with pytest.raises(PnmlError, match='not well-formed XML'):
+            pnml_to_element('<pnml><net>')
+
+
+class TestQualifiedNames:
+    """Building element names without writing the namespace out."""
+
+    def test_qualifies_a_local_name(self) -> None:
+        """A caller adding elements needs the namespace on them."""
+        assert qname('graphics') == f'{{{PNML_NAMESPACE}}}graphics'
+
+
+class TestElementFor:
+    """Finding the element that stands for a node of a net."""
+
+    def test_finds_a_place(self, server_net: PetriNet) -> None:
+        """A place is reachable from the net object that produced it."""
+        root = to_element(server_net)
+
+        element = element_for(root, server_net.place('waiting'))
+
+        assert element.get('id') == 'waiting'
+
+    def test_finds_a_transition(self, server_net: PetriNet) -> None:
+        """So is a transition."""
+        root = to_element(server_net)
+
+        element = element_for(root, server_net.transition('serve'))
+
+        assert element.get('id') == 'serve'
+
+    def test_finds_an_arc_by_its_endpoints(
+        self, server_net: PetriNet
+    ) -> None:
+        """Arcs are unnamed, so they are matched on what they join."""
+        root = to_element(server_net)
+
+        element = element_for(root, server_net.arcs[0])
+
+        assert element.get('source') == 'waiting'
+        assert element.get('target') == 'serve'
+
+    def test_distinguishes_the_two_arcs_of_a_self_loop(
+        self, server_net: PetriNet
+    ) -> None:
+        """The two directions between one pair are two different elements."""
+        root = to_element(server_net)
+        into = [arc for arc in server_net.arcs if arc.place.name == 'server'
+                and arc.is_input][0]
+        out_of = [arc for arc in server_net.arcs if arc.place.name == 'server'
+                  and arc.is_output][0]
+
+        assert element_for(root, into).get('source') == 'server'
+        assert element_for(root, out_of).get('target') == 'server'
+
+    def test_finds_an_element_by_identifier(
+        self, server_net: PetriNet
+    ) -> None:
+        """A document from elsewhere is addressed by its own ids."""
+        root = to_element(server_net)
+
+        assert element_for(root, 'served').get('id') == 'served'
+
+    def test_an_unknown_node_is_reported(
+        self, server_net: PetriNet
+    ) -> None:
+        """Asking for something that is not there is an error, not None."""
+        root = to_element(server_net)
+
+        with pytest.raises(PnmlError, match='no element with id'):
+            element_for(root, 'nowhere')
+
+    def test_an_unknown_arc_is_reported(self, server_net: PetriNet) -> None:
+        """The message names the endpoints that were looked for."""
+        other = PetriNet()
+        place = other.add_place(Place('a'))
+        transition = other.add_transition(Transition('b'))
+        arc = other.add_arc(Arc(place, transition))
+
+        with pytest.raises(PnmlError, match="no arc from 'a' to 'b'"):
+            element_for(to_element(server_net), arc)
+
+
+class TestGraphics:
+    """Carrying layout and colour on the tree, which the model does not hold."""
+
+    def test_position_is_written(self, server_net: PetriNet) -> None:
+        """The position is what an editor most needs to keep."""
+        root = to_element(server_net)
+
+        set_graphics(
+            element_for(root, server_net.place('waiting')), position=(40, 120)
+        )
+
+        assert '<position x="40" y="120"' in element_to_pnml(root)
+
+    def test_colours_are_written(self, server_net: PetriNet) -> None:
+        """Fill and line carry the colours."""
+        root = to_element(server_net)
+
+        set_graphics(
+            element_for(root, server_net.place('waiting')),
+            fill={'color': '#B0D0FF'},
+            line={'color': '#204060', 'width': '2'},
+        )
+
+        document = element_to_pnml(root)
+
+        assert '<fill color="#B0D0FF"' in document
+        assert '<line color="#204060" width="2"' in document
+
+    def test_children_follow_the_order_of_the_standard(
+        self, server_net: PetriNet
+    ) -> None:
+        """position, dimension, fill then line, whatever order they are given."""
+        root = to_element(server_net)
+
+        graphics = set_graphics(
+            element_for(root, server_net.place('waiting')),
+            line={'width': '1'},
+            fill={'color': '#FFF'},
+            dimension=(30, 30),
+            position=(0, 0),
+        )
+
+        assert [child.tag.rpartition('}')[2] for child in graphics] == [
+            'position',
+            'dimension',
+            'fill',
+            'line',
+        ]
+
+    def test_whole_coordinates_are_written_without_a_decimal_point(
+        self, server_net: PetriNet
+    ) -> None:
+        """A float that is a whole number should not read as 40.0."""
+        root = to_element(server_net)
+
+        set_graphics(
+            element_for(root, server_net.place('waiting')),
+            position=(40.0, 120.5),
+        )
+
+        assert '<position x="40" y="120.5"' in element_to_pnml(root)
+
+    def test_nothing_is_written_when_nothing_is_given(
+        self, server_net: PetriNet
+    ) -> None:
+        """An empty graphics element leaves the standard's defaults to apply."""
+        root = to_element(server_net)
+
+        graphics = set_graphics(
+            element_for(root, server_net.place('waiting'))
+        )
+
+        assert list(graphics) == []
+
+    def test_setting_graphics_twice_replaces_them(
+        self, server_net: PetriNet
+    ) -> None:
+        """Moving a node must not leave its old position behind."""
+        root = to_element(server_net)
+        element = element_for(root, server_net.place('waiting'))
+
+        set_graphics(element, position=(40, 120))
+        set_graphics(element, position=(200, 300))
+
+        document = element_to_pnml(root)
+
+        assert document.count('<position') == 1
+        assert '<position x="200" y="300"' in document
+
+    def test_graphics_can_be_read_back(self, server_net: PetriNet) -> None:
+        """An editor reopening a file finds the layout it saved."""
+        root = to_element(server_net)
+        set_graphics(
+            element_for(root, server_net.place('waiting')), position=(40, 120)
+        )
+
+        reparsed = pnml_to_element(element_to_pnml(root))
+        graphics = graphics_of(element_for(reparsed, 'waiting'))
+
+        assert graphics is not None
+        assert graphics[0].attrib == {'x': '40', 'y': '120'}
+
+    def test_an_element_without_graphics_reads_as_none(
+        self, server_net: PetriNet
+    ) -> None:
+        """Absence is reported as absence rather than as an empty element."""
+        root = to_element(server_net)
+
+        assert graphics_of(element_for(root, 'waiting')) is None
+
+    def test_graphics_do_not_disturb_the_model(
+        self, server_net: PetriNet
+    ) -> None:
+        """A decorated document still reads back as the same net."""
+        root = to_element(server_net)
+        for place in server_net.places:
+            set_graphics(element_for(root, place), position=(10, 20))
+        for transition in server_net.transitions:
+            set_graphics(element_for(root, transition), fill={'color': '#EEE'})
+        for arc in server_net.arcs:
+            set_graphics(element_for(root, arc), line={'shape': 'line'})
+
+        restored = from_element(pnml_to_element(element_to_pnml(root)))
+
+        assert restored.marking == server_net.marking
+        assert [str(arc) for arc in restored.arcs] == [
+            str(arc) for arc in server_net.arcs
+        ]
+
+    def test_arcs_can_carry_graphics(self, server_net: PetriNet) -> None:
+        """Bend points and line style belong to the arc element."""
+        root = to_element(server_net)
+
+        set_graphics(
+            element_for(root, server_net.arcs[0]), position=(80, 120)
+        )
+
+        element = element_for(root, server_net.arcs[0])
+        graphics = graphics_of(element)
+
+        assert graphics is not None
+        assert graphics[0].attrib == {'x': '80', 'y': '120'}
+
+
+class TestNodesByElement:
+    """Mapping the elements of a tree back to the nodes of a net."""
+
+    def test_maps_a_written_tree(self, server_net: PetriNet) -> None:
+        """A tree built from a net maps back onto that same net."""
+        root = to_element(server_net)
+
+        mapping = nodes_by_element(root, server_net)
+
+        assert set(mapping.values()) == {
+            *server_net.places,
+            *server_net.transitions,
+            *server_net.arcs,
+        }
+
+    def test_maps_a_read_tree(self, server_net: PetriNet) -> None:
+        """The mapping is what a caller needs after reading a document."""
+        root = pnml_to_element(to_pnml(server_net))
+        restored = from_element(root)
+
+        mapping = nodes_by_element(root, restored)
+
+        assert {
+            element.get('id'): node.name
+            for element, node in mapping.items()
+            if element.get('id') in {'waiting', 'serve'}
+        } == {'waiting': 'waiting', 'serve': 'serve'}
+
+    def test_maps_arcs_in_order(self, server_net: PetriNet) -> None:
+        """Arcs are matched positionally, since they carry no name."""
+        root = to_element(server_net)
+
+        mapping = nodes_by_element(root, server_net)
+        arcs = [
+            node for element, node in mapping.items()
+            if element.tag == qname('arc')
+        ]
+
+        assert arcs == list(server_net.arcs)
+
+    def test_maps_a_node_whose_id_differs_from_its_name(self) -> None:
+        """The reason the mapping exists: an id need not be a name."""
+        root = pnml_to_element(
+            document(
+                '<place id="n17"><name><text>buffer</text></name></place>'
+            )
+        )
+        net = from_element(root)
+
+        mapping = nodes_by_element(root, net)
+        element = next(iter(mapping))
+
+        assert element.get('id') == 'n17'
+        assert mapping[element].name == 'buffer'
+
+    def test_can_be_inverted_for_a_node_to_element_lookup(self) -> None:
+        """Inverting gives a lookup that works on a foreign document."""
+        root = pnml_to_element(
+            document(
+                '<place id="n17"><name><text>buffer</text></name></place>'
+            )
+        )
+        net = from_element(root)
+
+        elements = {
+            node: element
+            for element, node in nodes_by_element(root, net).items()
+        }
+
+        assert elements[net.place('buffer')].get('id') == 'n17'
+
+    def test_a_mismatched_net_is_rejected(
+        self, server_net: PetriNet
+    ) -> None:
+        """A tree and a net that do not describe each other cannot be paired."""
+        root = to_element(server_net)
+
+        with pytest.raises(PnmlError, match='do not describe each other'):
+            nodes_by_element(root, PetriNet())
+
+    def test_a_tree_with_no_net_is_rejected(self) -> None:
+        """The same rule as reading: one tree, one net."""
+        with pytest.raises(PnmlError, match='holds no net'):
+            nodes_by_element(pnml_to_element('<pnml/>'), PetriNet())
+
+
+class TestEditorWorkflow:
+    """The pattern a project such as the graphical editor is expected to use."""
+
+    def test_a_layout_survives_a_save_and_a_load(
+        self, server_net: PetriNet
+    ) -> None:
+        """The whole point: draw a net, save it, open it, find the layout.
+
+        The view data is held beside the net, keyed by the node object, and
+        never enters the model.
+        """
+        views = {
+            place: (index * 100.0, 40.0)
+            for index, place in enumerate(server_net.places)
+        }
+
+        root = to_element(server_net)
+        for place, (x, y) in views.items():
+            set_graphics(element_for(root, place), position=(x, y))
+        document = element_to_pnml(root)
+
+        reloaded_root = pnml_to_element(document)
+        reloaded_net = from_element(reloaded_root)
+        reloaded: dict[str, tuple[float, float]] = {}
+        for element, node in nodes_by_element(
+            reloaded_root, reloaded_net
+        ).items():
+            graphics = graphics_of(element)
+            if graphics is None:
+                continue
+            position = graphics[0]
+            reloaded[node.name] = (
+                float(position.get('x', '0')),
+                float(position.get('y', '0')),
+            )
+
+        assert reloaded == {
+            place.name: position for place, position in views.items()
+        }
+
+    def test_renaming_does_not_disturb_a_view_table(
+        self, server_net: PetriNet
+    ) -> None:
+        """Keying the view table by object is what makes renames free.
+
+        A table keyed by name would need updating in step with every rename,
+        and would go stale the first time that was forgotten.
+        """
+        waiting = server_net.place('waiting')
+        views = {waiting: (40.0, 120.0)}
+
+        server_net.rename_place(waiting, 'queue')
+
+        assert views[waiting] == (40.0, 120.0)
+        assert views[server_net.place('queue')] == (40.0, 120.0)
