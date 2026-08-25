@@ -61,6 +61,130 @@ class TestEmptyNet:
         assert net.marking == ()
 
 
+class TestConstructor:
+    """Building a net in one call, from nodes and arcs that already exist."""
+
+    def test_builds_a_whole_net(self) -> None:
+        """The three arguments together are a complete net."""
+        p1 = Place('p1', initial_marking=3)
+        p2 = Place('p2')
+        t1 = Transition('t1')
+        arcs = [Arc(p1, t1), Arc(t1, p2)]
+
+        net = PetriNet(places=[p1, p2], transitions=[t1], arcs=arcs)
+
+        assert net.places == (p1, p2)
+        assert net.transitions == (t1,)
+        assert net.arcs == tuple(arcs)
+
+    def test_accepts_the_arguments_positionally(self) -> None:
+        """Places, transitions and arcs, in that order."""
+        p1 = Place('p1')
+        t1 = Transition('t1')
+
+        net = PetriNet([p1], [t1], [Arc(p1, t1)])
+
+        assert net.arcs[0].place is p1
+
+    def test_the_order_given_is_the_order_of_the_marking(self) -> None:
+        """The places argument fixes what each entry of the marking means."""
+        p1 = Place('p1', initial_marking=1)
+        p2 = Place('p2', initial_marking=2)
+
+        assert PetriNet(places=[p2, p1]).marking == (2, 1)
+
+    def test_arcs_may_be_given_before_their_endpoints_are_read(self) -> None:
+        """Nodes go in first, so the caller need not order the arguments."""
+        p1 = Place('p1')
+        t1 = Transition('t1')
+
+        net = PetriNet(arcs=[Arc(p1, t1)], transitions=[t1], places=[p1])
+
+        assert net.input_arcs(t1)[0].place is p1
+
+    def test_accepts_any_iterable(self) -> None:
+        """Generators work; nothing is iterated twice."""
+        places = [Place('p1'), Place('p2')]
+
+        net = PetriNet(places=(place for place in places))
+
+        assert net.places == tuple(places)
+
+    def test_omitted_arguments_leave_the_net_empty(self) -> None:
+        """Every argument is optional, so ``PetriNet()`` still builds."""
+        net = PetriNet(transitions=[Transition('t1')])
+
+        assert net.places == ()
+        assert net.arcs == ()
+
+    def test_a_repeated_place_is_rejected(self) -> None:
+        """The constructor refuses what add_place refuses."""
+        p1 = Place('p1')
+
+        with pytest.raises(ValueError, match='already in the net'):
+            PetriNet(places=[p1, p1])
+
+    def test_two_places_sharing_a_name_are_rejected(self) -> None:
+        """Names identify a node within a net, here as anywhere else."""
+        with pytest.raises(ValueError, match='already has a place named'):
+            PetriNet(places=[Place('p1'), Place('p1')])
+
+    def test_an_arc_to_an_unlisted_node_is_rejected(self) -> None:
+        """The constructor does not adopt a node it was not given."""
+        p1 = Place('p1')
+        t1 = Transition('t1')
+
+        with pytest.raises(ValueError, match="Place 'p1' is not in the net"):
+            PetriNet(transitions=[t1], arcs=[Arc(p1, t1)])
+
+    def test_a_duplicate_arc_is_rejected(self) -> None:
+        """Two arcs the same way round would be one arc of the summed weight."""
+        p1 = Place('p1')
+        t1 = Transition('t1')
+
+        with pytest.raises(ValueError, match='already joins place'):
+            PetriNet(
+                places=[p1],
+                transitions=[t1],
+                arcs=[Arc(p1, t1), Arc(p1, t1, weight=2)],
+            )
+
+    def test_a_non_place_among_the_places_is_rejected(self) -> None:
+        """Passing the arcs as the places is the mistake this catches."""
+        p1 = Place('p1')
+        t1 = Transition('t1')
+
+        with pytest.raises(TypeError, match='places must contain Place'):
+            PetriNet(places=[Arc(p1, t1)])
+
+    def test_a_non_transition_among_the_transitions_is_rejected(self) -> None:
+        """The same guard on the transitions argument."""
+        with pytest.raises(
+            TypeError, match='transitions must contain Transition'
+        ):
+            PetriNet(transitions=[Place('p1')])
+
+    def test_a_non_arc_among_the_arcs_is_rejected(self) -> None:
+        """And on the arcs argument."""
+        with pytest.raises(TypeError, match='arcs must contain Arc'):
+            PetriNet(arcs=[Place('p1')])
+
+    def test_the_net_fires(self) -> None:
+        """A net built this way is a net, not a half-initialised one."""
+        p1 = Place('p1', initial_marking=1)
+        p2 = Place('p2')
+        t1 = Transition('t1')
+        net = PetriNet(
+            places=[p1, p2],
+            transitions=[t1],
+            arcs=[Arc(p1, t1), Arc(t1, p2)],
+        )
+
+        net.fire(t1)
+
+        assert net.marking == (0, 1)
+
+
 class TestAddPlace:
     """Adding places, and the names they may take."""
 

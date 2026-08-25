@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from masafi_sim_petri.petri_net.arc import Arc
 from masafi_sim_petri.petri_net.place import Place
 from masafi_sim_petri.petri_net.transition import Transition
@@ -23,8 +25,39 @@ class PetriNet:
     Every collection is returned in the order its members were added, so a run
     over a net is reproducible.
 
+    A net can be built either node by node, with :meth:`add_place`,
+    :meth:`add_transition` and :meth:`add_arc`, or in one call by handing the
+    nodes and the arcs to the constructor. The two are equivalent: the
+    constructor adds the places, then the transitions, then the arcs, through
+    those same methods, so it accepts and refuses exactly what they do.
+
+    Parameters
+    ----------
+    places : iterable of Place, optional
+        Places to add, in the order they are to take in the marking vector.
+        Defaults to no places.
+    transitions : iterable of Transition, optional
+        Transitions to add, in the order :meth:`enabled_transitions` is to
+        report them. Defaults to no transitions.
+    arcs : iterable of Arc, optional
+        Arcs to add. Both endpoints of every arc must be among `places` and
+        `transitions`; the constructor does not adopt a node it was not given.
+        Defaults to no arcs.
+
+    Raises
+    ------
+    TypeError
+        If any argument holds an object of the wrong type.
+    ValueError
+        For anything :meth:`add_place`, :meth:`add_transition` or
+        :meth:`add_arc` refuses: a repeated node, two places or two
+        transitions sharing a name, an arc reaching a node the net was not
+        given, or a second arc joining the same pair in the same direction.
+
     Examples
     --------
+    Node by node, binding each node as it is added:
+
     >>> from masafi_sim_petri import Arc, PetriNet, Place, Transition
     >>> net = PetriNet()
     >>> waiting = net.add_place(Place('waiting', initial_marking=2))
@@ -34,9 +67,27 @@ class PetriNet:
     >>> _ = net.add_arc(Arc(serve, served))
     >>> net.marking
     (2, 0)
+
+    Or all at once, which reads better when the nodes already exist:
+
+    >>> waiting = Place('waiting', initial_marking=2)
+    >>> served = Place('served')
+    >>> serve = Transition('serve')
+    >>> net = PetriNet(
+    ...     places=[waiting, served],
+    ...     transitions=[serve],
+    ...     arcs=[Arc(waiting, serve), Arc(serve, served)],
+    ... )
+    >>> net.marking
+    (2, 0)
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        places: Iterable[Place] | None = None,
+        transitions: Iterable[Transition] | None = None,
+        arcs: Iterable[Arc] | None = None,
+    ) -> None:
         # Order and lookup are kept apart on purpose. The lists define the
         # order of the marking vector, which must not move when a node is
         # renamed; the dictionaries are only an index, and a rename edits
@@ -49,6 +100,29 @@ class PetriNet:
         self._input_arcs: dict[Transition, list[Arc]] = {}
         self._output_arcs: dict[Transition, list[Arc]] = {}
         self._affected: dict[Place, set[Transition]] = {}
+        # The nodes go in before the arcs, whatever order the caller wrote
+        # the three arguments in: an arc can only be added once the net holds
+        # both of its endpoints.
+        for place in () if places is None else places:
+            if not isinstance(place, Place):
+                raise TypeError(
+                    'places must contain Place objects, got '
+                    f'{type(place).__name__}'
+                )
+            self.add_place(place)
+        for transition in () if transitions is None else transitions:
+            if not isinstance(transition, Transition):
+                raise TypeError(
+                    'transitions must contain Transition objects, got '
+                    f'{type(transition).__name__}'
+                )
+            self.add_transition(transition)
+        for arc in () if arcs is None else arcs:
+            if not isinstance(arc, Arc):
+                raise TypeError(
+                    f'arcs must contain Arc objects, got {type(arc).__name__}'
+                )
+            self.add_arc(arc)
 
     # ------------------------------------------------------------------
     # Building the net

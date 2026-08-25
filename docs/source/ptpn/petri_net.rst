@@ -31,6 +31,43 @@ This is the queue-and-server pattern: ``serve`` takes a customer from
 that token is out, no second ``serve`` could start — which is how a net says
 "one at a time" without any construct for saying it.
 
+The same net can be handed to the constructor instead, which suits nodes that
+already exist — read from a file, built by a generator, or simply named ahead
+of time so the arcs read as a picture of the net:
+
+.. doctest::
+
+   >>> queue = Place('waiting', initial_marking=2)
+   >>> lock = Place('server', initial_marking=1)
+   >>> done = Place('served')
+   >>> serving = Transition('serve')
+   >>> same = PetriNet(
+   ...     places=[queue, lock, done],
+   ...     transitions=[serving],
+   ...     arcs=[
+   ...         Arc(queue, serving),
+   ...         Arc(lock, serving),
+   ...         Arc(serving, done),
+   ...         Arc(serving, lock),
+   ...     ],
+   ... )
+   >>> print(same)
+   PetriNet with 3 places, 1 transitions and 4 arcs
+
+There is no third way of building a net hiding behind that: the constructor
+calls :meth:`~masafi_sim_petri.petri_net.petri_net.PetriNet.add_place`,
+:meth:`~masafi_sim_petri.petri_net.petri_net.PetriNet.add_transition` and
+:meth:`~masafi_sim_petri.petri_net.petri_net.PetriNet.add_arc` itself, in that
+order, so it accepts and refuses exactly what they do. The fixed order is what
+lets the arcs be written in the same call as their endpoints; the order *within*
+each argument is preserved, because that is what the marking vector is indexed
+by.
+
+What the constructor deliberately does not do is adopt a node it was not given.
+An arc naming a place absent from ``places`` is an error, not an instruction to
+add the place — a net assembled from a mistyped list would otherwise come out
+larger than intended and still look well formed.
+
 Why the net holds the connectivity
 ----------------------------------
 
