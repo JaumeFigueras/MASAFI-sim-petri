@@ -30,6 +30,7 @@ Installation
    :caption: User guide
 
    ptpn/index
+   analysis/index
    io/index
 
 .. toctree::
