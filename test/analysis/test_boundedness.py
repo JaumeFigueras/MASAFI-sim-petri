@@ -1,13 +1,13 @@
 """Tests for :mod:`masafi_sim_petri.analysis.boundedness`.
 
-These cover the two boundedness tests: that they answer correctly on bounded
+These cover the three boundedness tests: that they answer correctly on bounded
 and on unbounded nets, that they terminate in both cases, that they start from
 the initial marking, and that they leave the net exactly as they found it.
 """
 
 import pytest
 
-from masafi_sim_petri.analysis import is_k_bounded, is_safe
+from masafi_sim_petri.analysis import is_bounded, is_k_bounded, is_safe
 from masafi_sim_petri.petri_net import Arc, PetriNet, Place, Transition
 
 
@@ -210,3 +210,153 @@ class TestTheNetIsLeftAlone:
         queue_net.marking = (0, 0)
         assert is_k_bounded(queue_net, 1) is False
         assert queue_net.marking == (0, 0)
+
+
+class TestIsBounded:
+    """Boundedness without being told which bound to look for."""
+
+    def test_a_cycle_is_bounded(self, cycle_net: PetriNet) -> None:
+        """A token that only moves cannot accumulate anywhere."""
+        assert is_bounded(cycle_net) is True
+
+    def test_a_bounded_net_need_not_be_safe(self, queue_net: PetriNet) -> None:
+        """The question is whether some bound holds, not whether one does."""
+        assert is_bounded(queue_net) is True
+        assert is_k_bounded(queue_net, 1) is False
+
+    def test_a_net_without_transitions_is_bounded(self) -> None:
+        """One marking is a finite reachable set."""
+        net = PetriNet()
+        net.add_place(Place('p1', initial_marking=7))
+        assert is_bounded(net) is True
+
+    def test_an_empty_net_is_bounded(self) -> None:
+        """A net with no places has nowhere to accumulate tokens."""
+        assert is_bounded(PetriNet()) is True
+
+    def test_a_producer_without_a_limit_is_unbounded(
+        self, unbounded_net: PetriNet
+    ) -> None:
+        """The successor strictly covers its own parent."""
+        assert is_bounded(unbounded_net) is False
+
+    def test_a_source_transition_is_unbounded(self) -> None:
+        """A transition with no input arcs can never be stopped."""
+        net = PetriNet()
+        buffer = net.add_place(Place('buffer'))
+        produce = net.add_transition(Transition('produce'))
+        net.add_arc(Arc(produce, buffer))
+        assert is_bounded(net) is False
+
+    def test_a_producer_with_free_slots_is_bounded(self) -> None:
+        """Counting the free slots of a buffer is what bounds a producer."""
+        net = PetriNet()
+        free = net.add_place(Place('free', initial_marking=3))
+        buffer = net.add_place(Place('buffer'))
+        produce = net.add_transition(Transition('produce'))
+        consume = net.add_transition(Transition('consume'))
+        net.add_arc(Arc(free, produce))
+        net.add_arc(Arc(produce, buffer))
+        net.add_arc(Arc(buffer, consume))
+        net.add_arc(Arc(consume, free))
+        assert is_bounded(net) is True
+
+    def test_a_consumer_alone_does_not_bound_a_producer(self) -> None:
+        """Consuming the tokens does not stop them piling up faster."""
+        net = PetriNet()
+        running = net.add_place(Place('running', initial_marking=1))
+        buffer = net.add_place(Place('buffer'))
+        produce = net.add_transition(Transition('produce'))
+        consume = net.add_transition(Transition('consume'))
+        net.add_arc(Arc(running, produce))
+        net.add_arc(Arc(produce, running))
+        net.add_arc(Arc(produce, buffer))
+        net.add_arc(Arc(buffer, consume))
+        assert is_bounded(net) is False
+
+    def test_the_covered_marking_need_not_be_the_parent(self) -> None:
+        """The whole path back to the root is compared, not just one step.
+
+        The cycle ``p1 -> t1 -> p2 -> t2 -> p1`` leaves a token in ``p3`` on
+        every turn, so the marking that covers the root is two firings away
+        from it.
+        """
+        net = PetriNet()
+        p1 = net.add_place(Place('p1', initial_marking=1))
+        p2 = net.add_place(Place('p2'))
+        p3 = net.add_place(Place('p3'))
+        t1 = net.add_transition(Transition('t1'))
+        t2 = net.add_transition(Transition('t2'))
+        net.add_arc(Arc(p1, t1))
+        net.add_arc(Arc(t1, p2))
+        net.add_arc(Arc(p2, t2))
+        net.add_arc(Arc(t2, p1))
+        net.add_arc(Arc(t2, p3))
+        assert is_bounded(net) is False
+
+    def test_covering_a_marking_off_the_path_is_not_unboundedness(
+        self,
+    ) -> None:
+        """Only an ancestor counts, because only an ancestor can be repeated.
+
+        Both ``t1`` and ``t2`` fire from the initial marking, and the marking
+        ``t2`` reaches covers the one ``t1`` reaches. Neither is reachable
+        from the other, so nothing can be pumped and the net has exactly three
+        reachable markings.
+        """
+        net = PetriNet()
+        start = net.add_place(Place('start', initial_marking=1))
+        left = net.add_place(Place('left'))
+        right = net.add_place(Place('right'))
+        t1 = net.add_transition(Transition('t1'))
+        t2 = net.add_transition(Transition('t2'))
+        net.add_arc(Arc(start, t1))
+        net.add_arc(Arc(t1, left))
+        net.add_arc(Arc(start, t2))
+        net.add_arc(Arc(t2, left))
+        net.add_arc(Arc(t2, right))
+        assert is_bounded(net) is True
+
+    def test_a_deep_net_does_not_exhaust_the_stack(self) -> None:
+        """The search is iterative, so the path may be longer than the frames.
+
+        Draining a place of 1200 tokens one at a time gives a single path of
+        1201 markings, well past the recursion limit of the interpreter, and
+        no two of them are comparable.
+        """
+        net = PetriNet()
+        full = net.add_place(Place('full', initial_marking=1200))
+        empty = net.add_place(Place('empty'))
+        drain = net.add_transition(Transition('drain'))
+        net.add_arc(Arc(full, drain))
+        net.add_arc(Arc(drain, empty))
+        assert is_bounded(net) is True
+
+
+class TestIsBoundedLeavesTheNetAlone:
+    """The same guarantees the bounded tests give."""
+
+    def test_the_marking_survives_a_true_answer(
+        self, cycle_net: PetriNet
+    ) -> None:
+        """A search that runs to exhaustion restores the marking."""
+        cycle_net.fire(cycle_net.transition('start'))
+        marking = cycle_net.marking
+        assert is_bounded(cycle_net) is True
+        assert cycle_net.marking == marking
+
+    def test_the_marking_survives_an_early_exit(
+        self, unbounded_net: PetriNet
+    ) -> None:
+        """A search that stops at the first strict cover restores it too."""
+        marking = unbounded_net.marking
+        assert is_bounded(unbounded_net) is False
+        assert unbounded_net.marking == marking
+
+    def test_the_search_starts_from_the_initial_marking(
+        self, unbounded_net: PetriNet
+    ) -> None:
+        """Emptying the net by hand does not make an unbounded net bounded."""
+        unbounded_net.marking = (0, 0)
+        assert is_bounded(unbounded_net) is False
+        assert unbounded_net.marking == (0, 0)
