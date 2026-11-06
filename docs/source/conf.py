@@ -31,7 +31,6 @@ extensions = [
     'sphinx.ext.viewcode',
 ]
 
-templates_path = ['_templates']
 exclude_patterns = []
 
 # -- API generation ----------------------------------------------------------
@@ -93,4 +92,6 @@ napoleon_use_rtype = True
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'sphinx_rtd_theme'
-html_static_path = ['_static']
+# No ``html_static_path`` or ``templates_path``: the project has no custom
+# static files or templates. git does not track empty directories, so pointing
+# at an empty ``_static`` works locally but warns on a fresh checkout (CI).
