@@ -3,7 +3,7 @@
 # Uses the project virtualenv when one is present, so the targets work whether
 # or not it is activated. Override with e.g. `make test PYTHON=python3.13`.
 
-PYTHON        ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
+PYTHON        ?= $(if $(wildcard .venv/bin/python),$(abspath .venv/bin/python),python3)
 DOCS_DIR      := docs
 COVERAGE_DIR  := test/coverage_reports
 PACKAGE       := masafi_sim_petri
@@ -15,10 +15,10 @@ help:  ## Show this help
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
 docs:  ## Build the Sphinx documentation into docs/build/html
-	$(MAKE) -C $(DOCS_DIR) html SPHINXBUILD="$(abspath $(PYTHON)) -m sphinx"
+	$(MAKE) -C $(DOCS_DIR) html SPHINXBUILD="$(PYTHON) -m sphinx"
 
 doctest:  ## Run the examples embedded in the documentation
-	$(MAKE) -C $(DOCS_DIR) doctest SPHINXBUILD="$(abspath $(PYTHON)) -m sphinx"
+	$(MAKE) -C $(DOCS_DIR) doctest SPHINXBUILD="$(PYTHON) -m sphinx"
 
 test:  ## Run the test suite
 	$(PYTHON) -m pytest

@@ -5,15 +5,6 @@ The Place/Transition net, or P/T net, is the base model of this library. Every
 other class of net in the library is an extension of it, so this is the section
 to read first.
 
-.. toctree::
-   :maxdepth: 2
-
-   place
-   transition
-   arc
-   petri_net
-   examples/index
-
 What is a Petri net?
 --------------------
 
@@ -44,56 +35,6 @@ the set of places, :math:`T` the set of transitions, :math:`F \subseteq
 (P \times T) \cup (T \times P)` the arcs, :math:`W : F \rightarrow
 \mathbb{N}^{+}` the arc weights, and :math:`M_0 : P \rightarrow \mathbb{N}` the
 initial marking.
-
-The firing rule
----------------
-
-The whole behaviour of a P/T net comes from one rule.
-
-A transition is **enabled** when every place with an arc into it holds at least
-as many tokens as that arc's weight. An enabled transition may **fire**, and
-firing does two things atomically:
-
-1. it removes ``weight`` tokens from each of its input places;
-2. it adds ``weight`` tokens to each of its output places.
-
-Nothing else changes. A transition that is not enabled cannot fire, and firing
-is the only way a marking changes.
-
-Two consequences are worth stating plainly, because they are what make the
-model useful:
-
-*Tokens are not conserved.* A transition with one input arc of weight 1 and two
-output arcs of weight 1 turns one token into two. This is how forking, and
-therefore concurrency, is expressed.
-
-*Firing is local.* A transition only ever looks at the places directly attached
-to it. There is no global scheduler deciding what happens next, which is why a
-net describes a distributed system as naturally as a centralised one.
-
-Choices made in this library
-----------------------------
-
-A P/T net admits several equally valid conventions. This library commits to
-these:
-
-**Interleaved firing**
-   One enabled transition fires at a time. When several transitions are enabled
-   simultaneously the net does not fire them all at once; each possible choice
-   leads to a different successor marking, and it is exactly that branching
-   that the reachability graph enumerates. The alternative, *maximal step*
-   semantics, fires every enabled transition together and yields a different
-   and coarser state space.
-
-**Weighted arcs**
-   Every arc carries a weight, defaulting to 1. Enabling and firing always
-   respect it.
-
-**Unbounded places**
-   No place has a capacity. A marking may grow without limit, which means
-   boundedness is a *property to be analysed* rather than a constraint imposed
-   by construction. A net that grows without bound is telling you something
-   about the system it models, and silently capping it would hide that.
 
 Why Petri nets for discrete event systems?
 ------------------------------------------
@@ -148,7 +89,58 @@ thousands. Reachability analysis cannot.
 **Extension without changing the base.** Timed nets attach durations to
 transitions so that the model answers questions about throughput and delay;
 coloured nets let tokens carry values so that one net describes many similar
-processes without duplicating structure. Both keep the firing rule above.
+processes without duplicating structure. Both keep the firing rule described
+below.
+
+Choices made in this library
+----------------------------
+
+A P/T net admits several equally valid conventions. This library commits to
+these:
+
+**Interleaved firing**
+   One enabled transition fires at a time. When several transitions are enabled
+   simultaneously the net does not fire them all at once; each possible choice
+   leads to a different successor marking, and it is exactly that branching
+   that the reachability graph enumerates. The alternative, *maximal step*
+   semantics, fires every enabled transition together and yields a different
+   and coarser state space.
+
+**Weighted arcs**
+   Every arc carries a weight, defaulting to 1. Enabling and firing always
+   respect it.
+
+**Unbounded places**
+   No place has a capacity. A marking may grow without limit, which means
+   boundedness is a *property to be analysed* rather than a constraint imposed
+   by construction. A net that grows without bound is telling you something
+   about the system it models, and silently capping it would hide that.
+
+The firing rule
+---------------
+
+The whole behaviour of a P/T net comes from one rule.
+
+A transition is **enabled** when every place with an arc into it holds at least
+as many tokens as that arc's weight. An enabled transition may **fire**, and
+firing does two things atomically:
+
+1. it removes ``weight`` tokens from each of its input places;
+2. it adds ``weight`` tokens to each of its output places.
+
+Nothing else changes. A transition that is not enabled cannot fire, and firing
+is the only way a marking changes.
+
+Two consequences are worth stating plainly, because they are what make the
+model useful:
+
+*Tokens are not conserved.* A transition with one input arc of weight 1 and two
+output arcs of weight 1 turns one token into two. This is how forking, and
+therefore concurrency, is expressed.
+
+*Firing is local.* A transition only ever looks at the places directly attached
+to it. There is no global scheduler deciding what happens next, which is why a
+net describes a distributed system as naturally as a centralised one.
 
 A small example
 ---------------
@@ -218,3 +210,12 @@ machinery: the same net object can be handed to the reachability analysis in
 :mod:`masafi_sim_petri.analysis` or to the SimPy-driven engine in
 :mod:`masafi_sim_petri.simulation`, and neither the places nor the transitions
 need to know which.
+
+.. toctree::
+   :maxdepth: 2
+
+   place
+   transition
+   arc
+   petri_net
+   examples/index
